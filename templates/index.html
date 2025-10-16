@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .container {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            height: 90vh;
+            
+        }
+        .video-container {
+            width: 80%;
+            position: relative;
+        }
+        #video-feed {
+            width: 100%;
+            height: auto;
+            border: 2px solid #333;
+            border-radius: 8px;
+        }
+        .controls {
+            width: 55%;
+            margin: 20px 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap:30px;
+            
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .recognition-active {
+            border-color: #28a745 !important;
+            box-shadow: 0 0 15px rgba(40, 167, 69, 0.3);
+        }
+        .capture-guidelines {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .capture-guidelines ul {
+            margin-bottom: 0;
+            padding-left: 20px;
+        }
+        .progress {
+            height: 25px;
+            background-color: #e9ecef;
+            border-radius: 15px;
+            margin: 15px 0;
+        }
+        .progress-bar {
+            background-color: #28a745;
+            border-radius: 15px;
+            transition: width 0.3s ease;
+        }
+        .btn {
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+        .btn i {
+            margin-right: 8px;
+        }
+        .threshold-container {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .threshold-value {
+            font-weight: bold;
+            color: #28a745;
+        }
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+        .toast {
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .toast.show {
+            opacity: 1;
+        }
+        .open-button {
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            background-color: #ffffff;
+            color: rgba(255, 255, 255, 0.156);
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .open-button:hover {
+            background-color: #8a8c8e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="video-container">
+            <img id="video-feed" src="{{ url_for('video_feed') }}" alt="Video Feed">
+        </div>
+
+        <div class="controls">
+            <h1 class="text-center mb-4">RollMate</h1>
+            <div class="text-center">
+                <button id="toggleBtn" class="btn btn-primary">
+                    <i class="fas fa-play"></i>Start Recognition
+                </button>
+                <button id="addFaceBtn" class="btn btn-success">
+                    <i class="fas fa-user-plus"></i>Add New Face
+                </button>
+                <button id="recordAttendanceBtn" class="btn btn-warning">
+                    <i class="fas fa-clipboard-list"></i>Record Attendance
+                </button>
+            </div>
+
+            <div class="row mt-4">
+                <div class="col-md-12 threshold-container">
+                    <label for="thresholdSlider" class="form-label">Recognition Accuracy Threshold:</label>
+                    <input type="range" class="form-range" id="thresholdSlider" min="0" max="1" step="0.01" value="0.5">
+                    <div class="text-center mt-2">
+                        Current Threshold: <span id="thresholdValue" class="threshold-value">0.50</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status" id="statusMessage">
+                <i class="fas fa-info-circle"></i> Camera initialized. Click "Start Recognition" to begin face recognition.
+            </div>
+        </div>
+    </div>
+
+    <!-- Face Capture Modal -->
+    <div class="modal fade" id="faceCaptureModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="faceCaptureModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="faceCaptureModalLabel">
+                        <i class="fas fa-camera"></i> Capturing Face Images
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated"
+                             role="progressbar"
+                             aria-valuenow="0"
+                             aria-valuemin="0"
+                             aria-valuemax="100"
+                             style="width: 0%">
+                            <span class="progress-text">0%</span>
+                        </div>
+                    </div>
+                    <p id="captureStatus" class="text-center">Preparing to capture images...</p>
+                    <div class="capture-guidelines">
+                        <h6><i class="fas fa-lightbulb"></i> Guidelines for best results:</h6>
+                        <ul>
+                            <li>Ensure your face is well-lit and clearly visible</li>
+                            <li>Look directly at the camera</li>
+                            <li>Slowly rotate your head to capture different angles:
+                                <ul>
+                                    <li>Look slightly left and right</li>
+                                    <li>Tilt your head up and down slightly</li>
+                                    <li>Keep movements slow and smooth</li>
+                                </ul>
+                            </li>
+                            <li>Maintain a neutral expression</li>
+                            <li>Keep your face centered in the frame</li>
+                            <li>Stay still between movements</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Capture Modal -->
+    <div class="modal fade" id="manualCaptureModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="manualCaptureModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="manualCaptureModalLabel">
+                        <i class="fas fa-camera"></i> Manual Face Capture
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-3">
+                        <canvas id="manualCanvas" width="720" height="450"></canvas>
+                    </div>
+                    <div class="capture-progress mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span>Images Captured:</span>
+                            <span id="captureCount">0 / 60</span>
+                        </div>
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="text-center">
+                        <button id="captureButton" class="btn btn-primary">
+                            <i class="fas fa-camera"></i> Capture Image
+                        </button>
+                    </div>
+                    <div class="capture-guidelines mt-3">
+                        <h6><i class="fas fa-lightbulb"></i> Guidelines for best results:</h6>
+                        <ul>
+                            <li>Ensure good lighting</li>
+                            <li>Keep face centered in frame</li>
+                            <li>Capture different angles (straight, slight left/right)</li>
+                            <li>Maintain neutral expression</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="open-button" onclick="openFaceRecognition()"> Face</button>
+
+    <!-- Toast Container -->
+    <div class="toast-container" aria-live="polite" aria-atomic="true">
+        <div class="toast align-items-center text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body"></div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const toggleBtn = document.getElementById('toggleBtn');
+        const addFaceBtn = document.getElementById('addFaceBtn');
+        const recordAttendanceBtn = document.getElementById('recordAttendanceBtn');
+        const thresholdSlider = document.getElementById('thresholdSlider');
+        const thresholdValue = document.getElementById('thresholdValue');
+        const statusMessage = document.getElementById('statusMessage');
+        const faceCaptureModal = new bootstrap.Modal(document.getElementById('faceCaptureModal'));
+        const progressBar = document.querySelector('.progress-bar');
+        const captureStatus = document.getElementById('captureStatus');
+
+        const manualCaptureModal = new bootstrap.Modal(document.getElementById('manualCaptureModal'));
+        const manualCanvas = document.getElementById('manualCanvas');
+        const captureButton = document.getElementById('captureButton');
+        const captureCountElement = document.getElementById('captureCount');
+        const manualProgressBar = document.querySelector('#manualCaptureModal .progress-bar');
+
+        let isRecording = false;
+        let captureInProgress = false;
+        let captureInterval = null;
+        let captureCount = 0;
+        const totalImages = 60;
+        let currentPersonName = '';
+
+        // Update threshold value display
+        thresholdSlider.addEventListener('input', () => {
+            thresholdValue.textContent = Number(thresholdSlider.value).toFixed(2);
+        });
+
+        toggleBtn.addEventListener('click', async () => {
+            const response = await fetch('/toggle_recognition', {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                isRecording = !isRecording;
+                toggleBtn.innerHTML = isRecording ?
+                    '<i class="fas fa-stop"></i>Stop Recognition' :
+                    '<i class="fas fa-play"></i>Start Recognition';
+                statusMessage.innerHTML = `<i class="fas ${isRecording ? 'fa-check-circle' : 'fa-info-circle'}"></i> ${data.message}`;
+
+                const videoFeed = document.getElementById('video-feed');
+                if (isRecording) {
+                    videoFeed.classList.add('recognition-active');
+                    toggleBtn.classList.replace('btn-primary', 'btn-danger');
+                } else {
+                    videoFeed.classList.remove('recognition-active');
+                    toggleBtn.classList.replace('btn-danger', 'btn-primary');
+                    if (data.absent && data.absent.length > 0) {
+                        showToast(`Absent students: ${data.absent.join(', ')}`);
+                    }
+                }
+            } else {
+                showToast(data.message);
+            }
+        });
+
+        addFaceBtn.addEventListener('click', async () => {
+            const name = prompt('Enter name for the new person:');
+            if (!name) return;
+
+            currentPersonName = name;
+            captureCount = 0;
+            updateCaptureProgress();
+
+            // Show the manual capture modal
+            manualCaptureModal.show();
+
+            // Start capturing frames from the main video feed
+            captureInterval = setInterval(updatePreview, 100);
+        });
+
+        async function updatePreview() {
+            try {
+                const response = await fetch('/capture_frame');
+                const data = await response.json();
+
+                if (data.success) {
+                    const img = new Image();
+                    img.onload = () => {
+                        const ctx = manualCanvas.getContext('2d');
+                        // Maintain aspect ratio while fitting within canvas
+                        const scale = Math.min(
+                            manualCanvas.width / img.width,
+                            manualCanvas.height / img.height
+                        );
+                        const x = (manualCanvas.width - img.width * scale) / 2;
+                        const y = (manualCanvas.height - img.height * scale) / 2;
+
+                        // Clear previous frame
+                        ctx.clearRect(0, 0, manualCanvas.width, manualCanvas.height);
+                        // Draw new frame
+                        ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+                    };
+                    img.src = data.image;
+                }
+            } catch (err) {
+                console.error('Error updating preview:', err);
+            }
+        }
+
+        document.getElementById('manualCaptureModal').addEventListener('hidden.bs.modal', () => {
+            if (captureInterval) {
+                clearInterval(captureInterval);
+                captureInterval = null;
+            }
+        });
+
+        captureButton.addEventListener('click', async () => {
+            if (captureCount >= totalImages) {
+                alert('Maximum number of images captured');
+                return;
+            }
+
+            try {
+                const response = await fetch('/capture_frame');
+                const data = await response.json();
+
+                if (data.success) {
+                    // Send the captured frame for processing
+                    const saveResponse = await fetch('/manual_capture', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            name: currentPersonName,
+                            image: data.image,
+                            count: captureCount,
+                            total: totalImages
+                        })
+                    });
+
+                    const saveData = await saveResponse.json();
+                    if (saveData.success) {
+                        captureCount = saveData.count;
+                        updateCaptureProgress();
+
+                        if (captureCount >= totalImages) {
+                            showToast('All images captured successfully!');
+                            manualCaptureModal.hide();
+                        }
+                    } else {
+                        showToast('Error saving image: ' + saveData.message);
+                    }
+                }
+            } catch (err) {
+                showToast('Error capturing image: ' + err.message);
+            }
+        });
+
+        function updateCaptureProgress() {
+            captureCountElement.textContent = `${captureCount} / ${totalImages}`;
+            const progress = (captureCount / totalImages) * 100;
+            manualProgressBar.style.width = `${progress}%`;
+        }
+
+        recordAttendanceBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/record_attendance', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                statusMessage.innerHTML = `<i class="fas ${data.success ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${data.message}`;
+                showToast(data.message);
+                if (data.success) {
+                    recordAttendanceBtn.disabled = true;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Error recording attendance');
+            }
+        });
+
+        thresholdSlider.addEventListener('change', async () => {
+            const formData = new FormData();
+            formData.append('threshold', thresholdSlider.value);
+
+            try {
+                const response = await fetch('/update_threshold', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (!data.success) {
+                    showToast(data.message);
+                } else {
+                    statusMessage.innerHTML = `<i class="fas fa-check-circle"></i> Recognition threshold updated to ${thresholdSlider.value}`;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Error updating threshold');
+            }
+        });
+
+        function showToast(message) {
+            const toastElement = document.querySelector('.toast');
+            const toastBody = toastElement.querySelector('.toast-body');
+            toastBody.textContent = message;
+            const toast = new bootstrap.Toast(toastElement);
+            toast.show();
+        }
+
+        function openFaceRecognition() {
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>
